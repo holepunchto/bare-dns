@@ -21,6 +21,8 @@ static void
 bare_dns__on_lookup (uv_getaddrinfo_t *handle, int status, struct addrinfo *res) {
   int err;
 
+  printf("bare_dns__on_lookup status=%d res=%p\n", status, res);
+
   bare_dns_lookup_t *req = (bare_dns_lookup_t *) handle->data;
 
   js_env_t *env = req->env;
