@@ -21,8 +21,6 @@ static void
 bare_dns__on_lookup (uv_getaddrinfo_t *handle, int status, struct addrinfo *res) {
   int err;
 
-  printf("bare_dns__on_lookup status=%d res=%p\n", status, res);
-
   bare_dns_lookup_t *req = (bare_dns_lookup_t *) handle->data;
 
   js_env_t *env = req->env;
@@ -52,6 +50,9 @@ bare_dns__on_lookup (uv_getaddrinfo_t *handle, int status, struct addrinfo *res)
 
     err = js_create_error(env, code, message, &args[0]);
     assert(err == 0);
+
+    err = js_get_null(env, &args[1]);
+    assert(err == 0);
   } else {
     err = js_get_null(env, &args[0]);
     assert(err == 0);
@@ -59,8 +60,6 @@ bare_dns__on_lookup (uv_getaddrinfo_t *handle, int status, struct addrinfo *res)
     js_value_t *result;
     err = js_create_array(env, &result);
     assert(err == 0);
-
-    args[1] = result;
 
     uint32_t i = 0;
 
@@ -108,11 +107,34 @@ bare_dns__on_lookup (uv_getaddrinfo_t *handle, int status, struct addrinfo *res)
     }
 
     uv_freeaddrinfo(res);
+
+    if (i > 0) args[1] = result;
+    else {
+      js_value_t *code;
+      err = js_create_string_utf8(env, (utf8_t *) uv_err_name(UV_EAI_NODATA), -1, &code);
+      assert(err == 0);
+
+      js_value_t *message;
+      err = js_create_string_utf8(env, (utf8_t *) uv_strerror(UV_EAI_NODATA), -1, &message);
+      assert(err == 0);
+
+      err = js_create_error(env, code, message, &args[0]);
+      assert(err == 0);
+
+      err = js_get_null(env, &args[1]);
+      assert(err == 0);
+    }
   }
 
   js_call_function(req->env, ctx, cb, 2, args, NULL);
 
   err = js_close_handle_scope(req->env, scope);
+  assert(err == 0);
+
+  err = js_delete_reference(env, req->cb);
+  assert(err == 0);
+
+  err = js_delete_reference(env, req->ctx);
   assert(err == 0);
 }
 
