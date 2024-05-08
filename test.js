@@ -33,8 +33,8 @@ test('lookup, ipv6 only', (t) => {
 
   dns.lookup('nodejs.org', { family: 6 }, (err, address, family) => {
     if (err) {
-      t.is(address, undefined)
-      t.is(family, undefined)
+      t.is(address, null)
+      t.is(family, 0)
 
       t.comment(err.message)
     } else {

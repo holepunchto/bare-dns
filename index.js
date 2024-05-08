@@ -3,13 +3,19 @@ const binding = require('./binding')
 function onlookup (err, addresses) {
   const req = this
 
-  if (err) return req.cb(err, null)
+  if (err) return req.cb(err, null, 0)
 
-  if (req.all) return req.cb(null, addresses)
-
-  const [{ address, family }] = addresses
+  const { address, family } = addresses[0]
 
   return req.cb(null, address, family)
+}
+
+function onlookupall (err, addresses) {
+  const req = this
+
+  if (err) return req.cb(err, null)
+
+  return req.cb(null, addresses)
 }
 
 exports.lookup = function lookup (hostname, opts = {}, cb) {
@@ -24,10 +30,9 @@ exports.lookup = function lookup (hostname, opts = {}, cb) {
   } = opts
 
   const req = {
-    all,
     cb,
     handle: null
   }
 
-  req.handle = binding.lookup(hostname, family, all, req, onlookup)
+  req.handle = binding.lookup(hostname, family, all, req, all ? onlookupall : onlookup)
 }
