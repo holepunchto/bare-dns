@@ -48,3 +48,19 @@ test('lookup, ipv6 only', (t) => {
     t.pass()
   })
 })
+
+test('lookup all', (t) => {
+  t.plan(3)
+
+  dns.lookup('nodejs.org', { all: true }, (err, addresses) => {
+    t.absent(err)
+    t.ok(addresses.length > 0)
+
+    for (const { address, family } of addresses) {
+      t.comment('address:', address)
+      t.comment('family:', family)
+    }
+
+    t.pass()
+  })
+})
