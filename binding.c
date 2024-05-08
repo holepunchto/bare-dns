@@ -65,25 +65,21 @@ bare_dns__on_lookup (uv_getaddrinfo_t *handle, int status, struct addrinfo *res)
     for (struct addrinfo *next = res; next != NULL; next = next->ai_next) {
       assert(next->ai_socktype == SOCK_STREAM);
 
-      const void *addr;
-
       int family;
 
+      char ip[INET6_ADDRSTRLEN];
+
       if (next->ai_family == AF_INET) {
-        addr = &((struct sockaddr_in *) next->ai_addr)->sin_addr;
         family = 4;
+        err = uv_ip4_name((struct sockaddr_in *) next->ai_addr, ip, sizeof(ip));
       } else if (next->ai_family == AF_INET6) {
-        addr = &((struct sockaddr_in6 *) next->ai_addr)->sin6_addr;
         family = 6;
+        err = uv_ip6_name((struct sockaddr_in6 *) next->ai_addr, ip, sizeof(ip));
       } else {
         continue;
       }
 
-      char ip[INET6_ADDRSTRLEN];
-
-      if (uv_inet_ntop(next->ai_family, addr, ip, sizeof(ip))) {
-        continue;
-      }
+      assert(err == 0);
 
       js_value_t *address;
       err = js_create_object(env, &address);
