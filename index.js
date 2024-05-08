@@ -24,15 +24,25 @@ exports.lookup = function lookup (hostname, opts = {}, cb) {
     opts = {}
   }
 
-  const {
+  let {
     family = 0,
     all = false
   } = opts
+
+  if (typeof family === 'string') {
+    switch (family) {
+      case 'IPv4': family = 4
+        break
+      case 'IPv6': family = 6
+        break
+      default: family = 0
+    }
+  }
 
   const req = {
     cb,
     handle: null
   }
 
-  req.handle = binding.lookup(hostname, family, all, req, all ? onlookupall : onlookup)
+  req.handle = binding.lookup(hostname, family || 0, all, req, all ? onlookupall : onlookup)
 }
