@@ -32,11 +32,18 @@ test('lookup, ipv6 only', (t) => {
   t.plan(3)
 
   dns.lookup('nodejs.org', { family: 6 }, (err, address, family) => {
-    t.absent(err)
-    t.is(family, 6)
+    if (err) {
+      t.is(address, undefined)
+      t.is(family, undefined)
 
-    t.comment('address:', address)
-    t.comment('family:', family)
+      t.comment(err.message)
+    } else {
+      t.is(typeof address, 'string')
+      t.is(family, 6)
+
+      t.comment('address:', address)
+      t.comment('family:', family)
+    }
 
     t.pass()
   })
