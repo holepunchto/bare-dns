@@ -1,6 +1,6 @@
 {
   "name": "bare-dns",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Domain name resolution for JavaScript",
   "exports": {
     ".": "./index.js",
