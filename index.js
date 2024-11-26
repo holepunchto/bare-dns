@@ -1,6 +1,6 @@
 const binding = require('./binding')
 
-function onlookup (err, addresses) {
+function onlookup(err, addresses) {
   const req = this
 
   if (err) return req.cb(err, null, 0)
@@ -10,7 +10,7 @@ function onlookup (err, addresses) {
   return req.cb(null, address, family)
 }
 
-function onlookupall (err, addresses) {
+function onlookupall(err, addresses) {
   const req = this
 
   if (err) return req.cb(err, null)
@@ -18,24 +18,24 @@ function onlookupall (err, addresses) {
   return req.cb(null, addresses)
 }
 
-exports.lookup = function lookup (hostname, opts = {}, cb) {
+exports.lookup = function lookup(hostname, opts = {}, cb) {
   if (typeof opts === 'function') {
     cb = opts
     opts = {}
   }
 
-  let {
-    family = 0,
-    all = false
-  } = opts
+  let { family = 0, all = false } = opts
 
   if (typeof family === 'string') {
     switch (family) {
-      case 'IPv4': family = 4
+      case 'IPv4':
+        family = 4
         break
-      case 'IPv6': family = 6
+      case 'IPv6':
+        family = 6
         break
-      default: family = 0
+      default:
+        family = 0
     }
   }
 
@@ -44,5 +44,11 @@ exports.lookup = function lookup (hostname, opts = {}, cb) {
     handle: null
   }
 
-  req.handle = binding.lookup(hostname, family || 0, all, req, all ? onlookupall : onlookup)
+  req.handle = binding.lookup(
+    hostname,
+    family || 0,
+    all,
+    req,
+    all ? onlookupall : onlookup
+  )
 }

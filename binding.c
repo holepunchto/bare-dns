@@ -18,7 +18,7 @@ typedef struct {
 } bare_dns_lookup_t;
 
 static void
-bare_dns__on_lookup (uv_getaddrinfo_t *handle, int status, struct addrinfo *res) {
+bare_dns__on_lookup(uv_getaddrinfo_t *handle, int status, struct addrinfo *res) {
   int err;
 
   bare_dns_lookup_t *req = (bare_dns_lookup_t *) handle->data;
@@ -139,7 +139,7 @@ bare_dns__on_lookup (uv_getaddrinfo_t *handle, int status, struct addrinfo *res)
 }
 
 static js_value_t *
-bare_dns_lookup (js_env_t *env, js_callback_info_t *info) {
+bare_dns_lookup(js_env_t *env, js_callback_info_t *info) {
   int err;
 
   size_t argc = 5;
@@ -211,7 +211,7 @@ bare_dns_lookup (js_env_t *env, js_callback_info_t *info) {
 }
 
 static js_value_t *
-bare_dns_exports (js_env_t *env, js_value_t *exports) {
+bare_dns_exports(js_env_t *env, js_value_t *exports) {
   int err;
 
 #define V(name, fn) \
