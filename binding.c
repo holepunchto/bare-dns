@@ -15,6 +15,9 @@ typedef struct {
   js_ref_t *cb;
 
   bool all;
+
+  js_deferred_teardown_t *teardown;
+  bool cancelled;
 } bare_dns_lookup_t;
 
 static void
@@ -24,6 +27,8 @@ bare_dns__on_lookup(uv_getaddrinfo_t *handle, int status, struct addrinfo *res) 
   bare_dns_lookup_t *req = (bare_dns_lookup_t *) handle->data;
 
   js_env_t *env = req->env;
+
+  if (req->cancelled) goto finalize;
 
   js_handle_scope_t *scope;
   err = js_open_handle_scope(env, &scope);
@@ -106,8 +111,6 @@ bare_dns__on_lookup(uv_getaddrinfo_t *handle, int status, struct addrinfo *res) 
       if (!req->all) break;
     }
 
-    uv_freeaddrinfo(res);
-
     if (i > 0) args[1] = result;
     else {
       js_value_t *code;
@@ -131,11 +134,26 @@ bare_dns__on_lookup(uv_getaddrinfo_t *handle, int status, struct addrinfo *res) 
   err = js_close_handle_scope(req->env, scope);
   assert(err == 0);
 
+finalize:
+  uv_freeaddrinfo(res);
+
+  err = js_finish_deferred_teardown_callback(req->teardown);
+  assert(err == 0);
+
   err = js_delete_reference(env, req->cb);
   assert(err == 0);
 
   err = js_delete_reference(env, req->ctx);
   assert(err == 0);
+}
+
+static void
+bare_dns__on_teardown(js_deferred_teardown_t *handle, void *data) {
+  bare_dns_lookup_t *req = (bare_dns_lookup_t *) data;
+
+  req->cancelled = true;
+
+  uv_cancel((uv_req_t *) &req->handle);
 }
 
 static js_value_t *
@@ -185,6 +203,7 @@ bare_dns_lookup(js_env_t *env, js_callback_info_t *info) {
 
   req->env = env;
   req->all = all;
+  req->cancelled = false;
 
   req->handle.data = (void *) req;
 
@@ -206,6 +225,9 @@ bare_dns_lookup(js_env_t *env, js_callback_info_t *info) {
     js_throw_error(env, uv_err_name(err), uv_strerror(err));
     return NULL;
   }
+
+  err = js_add_deferred_teardown_callback(env, bare_dns__on_teardown, (void *) req, &req->teardown);
+  assert(err == 0);
 
   return handle;
 }
