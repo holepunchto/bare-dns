@@ -15,20 +15,18 @@ typedef struct {
   js_ref_t *cb;
 
   bool all;
+  bool exiting;
 
   js_deferred_teardown_t *teardown;
-  bool cancelled;
 } bare_dns_lookup_t;
 
 static void
 bare_dns__on_lookup(uv_getaddrinfo_t *handle, int status, struct addrinfo *res) {
   int err;
 
-  bare_dns_lookup_t *req = (bare_dns_lookup_t *) handle->data;
+  bare_dns_lookup_t *req = (bare_dns_lookup_t *) handle;
 
   js_env_t *env = req->env;
-
-  if (req->cancelled) goto finalize;
 
   js_handle_scope_t *scope;
   err = js_open_handle_scope(env, &scope);
@@ -40,6 +38,12 @@ bare_dns__on_lookup(uv_getaddrinfo_t *handle, int status, struct addrinfo *res) 
 
   js_value_t *cb;
   err = js_get_reference_value(env, req->cb, &cb);
+  assert(err == 0);
+
+  err = js_delete_reference(env, req->cb);
+  assert(err == 0);
+
+  err = js_delete_reference(env, req->ctx);
   assert(err == 0);
 
   js_value_t *args[2];
@@ -129,21 +133,14 @@ bare_dns__on_lookup(uv_getaddrinfo_t *handle, int status, struct addrinfo *res) 
     }
   }
 
-  js_call_function(req->env, ctx, cb, 2, args, NULL);
+  uv_freeaddrinfo(res);
+
+  if (!req->exiting) js_call_function(req->env, ctx, cb, 2, args, NULL);
 
   err = js_close_handle_scope(req->env, scope);
   assert(err == 0);
 
-finalize:
-  uv_freeaddrinfo(res);
-
   err = js_finish_deferred_teardown_callback(req->teardown);
-  assert(err == 0);
-
-  err = js_delete_reference(env, req->cb);
-  assert(err == 0);
-
-  err = js_delete_reference(env, req->ctx);
   assert(err == 0);
 }
 
@@ -151,7 +148,7 @@ static void
 bare_dns__on_teardown(js_deferred_teardown_t *handle, void *data) {
   bare_dns_lookup_t *req = (bare_dns_lookup_t *) data;
 
-  req->cancelled = true;
+  req->exiting = true;
 
   uv_cancel((uv_req_t *) &req->handle);
 }
@@ -203,9 +200,7 @@ bare_dns_lookup(js_env_t *env, js_callback_info_t *info) {
 
   req->env = env;
   req->all = all;
-  req->cancelled = false;
-
-  req->handle.data = (void *) req;
+  req->exiting = false;
 
   err = js_create_reference(env, argv[3], 1, &req->ctx);
   assert(err == 0);
