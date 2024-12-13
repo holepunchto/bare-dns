@@ -3,14 +3,6 @@ declare namespace dns {
     family?: string | number
   }
 
-  interface LookupOptionsOne extends LookupOptions {
-    all?: false
-  }
-
-  interface LookupOptionsAll extends LookupOptions {
-    all: true
-  }
-
   export function lookup(
     hostname: string,
     cb: (err: Error | null, address: string, family: number) => void
@@ -18,13 +10,13 @@ declare namespace dns {
 
   export function lookup(
     hostname: string,
-    opts: LookupOptionsOne,
+    opts: LookupOptions & { all?: false },
     cb: (err: Error | null, address: string, family: number) => void
   ): void
 
   export function lookup(
     hostname: string,
-    opts: LookupOptionsAll,
+    opts: LookupOptions & { all: true },
     cb: (
       err: Error | null,
       addresses: { address: string; family: number }[]
