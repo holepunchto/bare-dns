@@ -3,11 +3,15 @@
   "version": "2.0.1",
   "description": "Domain name resolution for JavaScript",
   "exports": {
-    ".": "./index.js",
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
     "./package": "./package.json"
   },
   "files": [
     "index.js",
+    "index.d.ts",
     "binding.c",
     "binding.js",
     "CMakeLists.txt",
