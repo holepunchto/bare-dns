@@ -2,6 +2,8 @@ type IPFamily = 4 | 6
 
 interface LookupOptions {
   family?: `IPv${IPFamily}` | IPFamily | 0
+  hints?: number
+  all?: boolean
 }
 
 declare namespace dns {
