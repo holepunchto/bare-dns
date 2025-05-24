@@ -52,3 +52,9 @@ exports.lookup = function lookup(hostname, opts = {}, cb) {
     all ? onlookupall : onlookup
   )
 }
+
+exports.resolveTxt = function resolveTxt(hostname, cb = noop) {
+  binding.resolveTxt(hostname, cb, this)
+}
+
+function noop() {}
