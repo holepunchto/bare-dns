@@ -1,6 +1,8 @@
 #include <ares.h>
 #include <assert.h>
 #include <bare.h>
+#include <intrusive.h>
+#include <intrusive/list.h>
 #include <js.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -31,14 +33,28 @@ typedef struct {
 
 typedef struct {
   ares_channel channel;
-  ares_socket_t socket;
+  intrusive_list_t tasks;
 
+  js_env_t *env;
+  js_deferred_teardown_t *teardown;
+} bare_dns_resolver_t;
+
+typedef struct {
+  bare_dns_resolver_t *resolver;
+
+  ares_socket_t socket;
   uv_poll_t poll;
+
+  intrusive_list_node_t node;
+} bare_dns_resolve_task_t;
+
+typedef struct {
+  bare_dns_resolver_t *resolver;
 
   js_env_t *env;
   js_ref_t *ctx;
   js_ref_t *cb;
-} bare_dns_resolve_t;
+} bare_dns_resolve_req_t;
 
 static void
 bare_dns__on_lookup(uv_getaddrinfo_t *handle, int status, struct addrinfo *res) {
@@ -248,10 +264,129 @@ bare_dns_lookup(js_env_t *env, js_callback_info_t *info) {
 }
 
 void
+bare_dns__on_poll_close(uv_handle_t *handle) {
+  uv_poll_t *poll = (uv_poll_t *) handle;
+
+  bare_dns_resolve_task_t *task = container_of(poll, bare_dns_resolve_task_t, poll);
+
+  free(task);
+}
+
+void
+bare_dns__on_poll_update(uv_poll_t *poll, int status, int events) {
+  assert(status == 0);
+
+  bare_dns_resolve_task_t *task = container_of(poll, bare_dns_resolve_task_t, poll);
+
+  ares_process_fd(
+    task->resolver->channel,
+    events & UV_READABLE ? task->socket : ARES_SOCKET_BAD,
+    events & UV_WRITABLE ? task->socket : ARES_SOCKET_BAD
+  );
+}
+
+void
+bare_dns__on_socket_change(void *data, ares_socket_t socket, int read, int write) {
+  int err;
+
+  bare_dns_resolver_t *resolver = (bare_dns_resolver_t *) data;
+  bare_dns_resolve_task_t *task;
+
+  bool new_task = true;
+  intrusive_list_for_each(next, &resolver->tasks) {
+    bare_dns_resolve_task_t *t = intrusive_entry(next, bare_dns_resolve_task_t, node);
+
+    if (t->socket == socket) {
+      task = t;
+      new_task = false;
+
+      break;
+    }
+  }
+
+  if (new_task) {
+    task = (bare_dns_resolve_task_t *) malloc(sizeof(bare_dns_resolve_task_t));
+
+    task->resolver = resolver;
+    task->socket = socket;
+
+    intrusive_list_append(&resolver->tasks, &task->node);
+  }
+
+  if (read || write) {
+    uv_loop_t *loop;
+    err = js_get_env_loop(resolver->env, &loop);
+    assert(err == 0);
+
+    err = uv_poll_init_socket(loop, &task->poll, task->socket);
+    assert(err == 0);
+
+    int events = (read ? UV_READABLE : 0) | (write ? UV_WRITABLE : 0);
+    err = uv_poll_start(&task->poll, events, bare_dns__on_poll_update);
+    assert(err == 0);
+  } else {
+    intrusive_list_remove(&resolver->tasks, &task->node);
+
+    uv_close((uv_handle_t *) &task->poll, bare_dns__on_poll_close);
+  }
+}
+
+static void
+bare_dns__on_resolver_teardown(js_deferred_teardown_t *handle, void *data) {
+  int err;
+
+  bare_dns_resolver_t *resolver = (bare_dns_resolver_t *) data;
+
+  ares_destroy(resolver->channel);
+  ares_library_cleanup();
+
+  err = js_finish_deferred_teardown_callback(resolver->teardown);
+  assert(err == 0);
+}
+
+static js_value_t *
+bare_dns_init_resolver(js_env_t *env, js_callback_info_t *info) {
+  int err;
+
+  js_value_t *handle;
+
+  bare_dns_resolver_t *resolver;
+  err = js_create_arraybuffer(env, sizeof(bare_dns_resolver_t), (void **) &resolver, &handle);
+  assert(err == 0);
+
+  intrusive_list_init(&resolver->tasks);
+
+  err = ares_library_init(ARES_LIB_INIT_ALL);
+
+  if (err != ARES_SUCCESS) {
+    js_throw_error(env, NULL, ares_strerror(err));
+    return NULL;
+  }
+
+  struct ares_options opts;
+  opts.sock_state_cb = bare_dns__on_socket_change;
+  opts.sock_state_cb_data = resolver;
+
+  err = ares_init_options(&resolver->channel, &opts, ARES_OPT_SOCK_STATE_CB);
+
+  if (err != ARES_SUCCESS) {
+    js_throw_error(env, NULL, ares_strerror(err));
+    return NULL;
+  }
+
+  resolver->env = env;
+
+  err = js_add_deferred_teardown_callback(env, bare_dns__on_resolver_teardown, (void *) resolver, &resolver->teardown);
+  assert(err == 0);
+
+  return handle;
+}
+
+void
 bare_dns__on_resolve_txt(void *data, ares_status_t status, size_t timeouts, const ares_dns_record_t *dnsrec) {
   int err;
 
-  bare_dns_resolve_t *req = (bare_dns_resolve_t *) data;
+  bare_dns_resolve_req_t *req = (bare_dns_resolve_req_t *) data;
 
   js_env_t *env = req->env;
 
@@ -342,44 +477,7 @@ bare_dns__on_resolve_txt(void *data, ares_status_t status, size_t timeouts, cons
 
   js_call_function(env, ctx, cb, 2, args, NULL);
 
-  err = js_close_handle_scope(req->env, scope);
-  assert(err == 0);
-}
-
-void
-bare_dns__on_poll_update(uv_poll_t *poll, int status, int events) {
-  assert(status == 0);
-
-  bare_dns_resolve_t *handle = container_of(poll, bare_dns_resolve_t, poll);
-
-  ares_process_fd(
-    handle->channel,
-    events & UV_READABLE ? handle->socket : ARES_SOCKET_BAD,
-    events & UV_WRITABLE ? handle->socket : ARES_SOCKET_BAD
-  );
-}
-
-void
-bare_dns__on_socket_change(void *data, ares_socket_t socket, int read, int write) {
-  int err;
-
-  bare_dns_resolve_t *handle = (bare_dns_resolve_t *) data;
-
-  if (read == 0 && write == 0) {
-    return uv_close((uv_handle_t *) &handle->poll, NULL);
-  }
-
-  handle->socket = socket;
-
-  uv_loop_t *loop;
-  err = js_get_env_loop(handle->env, &loop);
-  assert(err == 0);
-
-  err = uv_poll_init_socket(loop, &handle->poll, socket);
-  assert(err == 0);
-
-  int events = (read ? UV_READABLE : 0) | (write ? UV_WRITABLE : 0);
-  err = uv_poll_start(&handle->poll, events, bare_dns__on_poll_update);
+  err = js_close_handle_scope(env, scope);
   assert(err == 0);
 }
 
@@ -387,51 +485,50 @@ static js_value_t *
 bare_dns_resolve_txt(js_env_t *env, js_callback_info_t *info) {
   int err;
 
-  size_t argc = 3;
-  js_value_t *argv[3];
+  size_t argc = 4;
+  js_value_t *argv[4];
 
   err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
   assert(err == 0);
 
-  assert(argc == 3);
+  assert(argc == 4);
+
+  bare_dns_resolver_t *resolver;
+  err = js_get_arraybuffer_info(env, argv[0], (void **) &resolver, NULL);
+  assert(err == 0);
 
   size_t len;
-  err = js_get_value_string_utf8(env, argv[0], NULL, 0, &len);
+  err = js_get_value_string_utf8(env, argv[1], NULL, 0, &len);
   assert(err == 0);
 
   len += 1 /* NULL */;
 
   utf8_t *hostname = malloc(len);
-  err = js_get_value_string_utf8(env, argv[0], hostname, len, NULL);
+  err = js_get_value_string_utf8(env, argv[1], hostname, len, NULL);
   assert(err == 0);
 
   js_value_t *handle;
 
-  bare_dns_resolve_t *req;
-  err = js_create_arraybuffer(env, sizeof(bare_dns_resolve_t), (void **) &req, &handle);
+  bare_dns_resolve_req_t *req;
+  err = js_create_arraybuffer(env, sizeof(bare_dns_resolve_req_t), (void **) &req, &handle);
   assert(err == 0);
 
+  req->resolver = resolver;
   req->env = env;
 
-  err = js_create_reference(env, argv[1], 1, &req->cb);
+  err = js_create_reference(env, argv[2], 1, &req->cb);
   assert(err == 0);
 
-  err = js_create_reference(env, argv[2], 1, &req->ctx);
+  err = js_create_reference(env, argv[3], 1, &req->ctx);
   assert(err == 0);
-
-  err = ares_library_init(ARES_LIB_INIT_ALL);
-  assert(err == ARES_SUCCESS);
-
-  struct ares_options opts;
-  opts.sock_state_cb = bare_dns__on_socket_change;
-  opts.sock_state_cb_data = req;
-
-  err = ares_init_options(&req->channel, &opts, ARES_OPT_SOCK_STATE_CB);
-  assert(err == ARES_SUCCESS);
 
   ares_status_t status;
-  status = ares_query_dnsrec(req->channel, (char *) hostname, ARES_CLASS_IN, ARES_REC_TYPE_TXT, bare_dns__on_resolve_txt, req, NULL);
-  assert(err == ARES_SUCCESS);
+  status = ares_query_dnsrec(req->resolver->channel, (char *) hostname, ARES_CLASS_IN, ARES_REC_TYPE_TXT, bare_dns__on_resolve_txt, req, NULL);
+
+  if (err != ARES_SUCCESS) {
+    js_throw_error(env, NULL, ares_strerror(err));
+    return NULL;
+  }
 
   free(hostname);
 
@@ -452,6 +549,7 @@ bare_dns_exports(js_env_t *env, js_value_t *exports) {
   }
 
   V("lookup", bare_dns_lookup)
+  V("initResolver", bare_dns_init_resolver)
   V("resolveTxt", bare_dns_resolve_txt)
 #undef V
 

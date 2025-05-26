@@ -66,6 +66,18 @@ test('lookup all', (t) => {
 })
 
 test('resolveTxt', (t) => {
+  t.test('unprobablenonexistentwebsite.com', (t) => {
+    t.plan(2)
+
+    dns.resolveTxt('unprobablenonexistentwebsite.com', (err, result) => {
+      t.comment('Error:', err)
+      t.comment('Result:', result)
+
+      t.ok(err)
+      t.absent(result)
+    })
+  })
+
   t.test('bare.pears.com', (t) => {
     t.plan(1)
 
