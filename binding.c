@@ -290,21 +290,18 @@ bare_dns__on_socket_change(void *data, ares_socket_t socket, int read, int write
   int err;
 
   bare_dns_resolver_t *resolver = (bare_dns_resolver_t *) data;
-  bare_dns_resolve_task_t *task;
+  bare_dns_resolve_task_t *task = NULL;
 
-  bool new_task = true;
   intrusive_list_for_each(next, &resolver->tasks) {
     bare_dns_resolve_task_t *t = intrusive_entry(next, bare_dns_resolve_task_t, node);
 
     if (t->socket == socket) {
       task = t;
-      new_task = false;
-
       break;
     }
   }
 
-  if (new_task) {
+  if (task == NULL) {
     task = (bare_dns_resolve_task_t *) malloc(sizeof(bare_dns_resolve_task_t));
 
     task->resolver = resolver;
