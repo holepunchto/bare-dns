@@ -9,6 +9,11 @@ exports.Resolver = class DNSResolver {
     binding.resolveTxt(this._handle, hostname, cb, this)
   }
 
+  destroy() {
+    binding.destroyResolver(this._handle)
+    this._handle = null
+  }
+
   static global = new this()
 }
 
