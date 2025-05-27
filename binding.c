@@ -58,6 +58,13 @@ typedef struct {
   js_ref_t *cb;
 } bare_dns_resolve_req_t;
 
+static uv_once_t bare_dns__init_resolver_guard = UV_ONCE_INIT;
+
+static void
+bare_dns__on_init_resolver(void) {
+  ares_library_init(ARES_LIB_INIT_ALL);
+}
+
 static void
 bare_dns__on_lookup(uv_getaddrinfo_t *handle, int status, struct addrinfo *res) {
   int err;
@@ -284,7 +291,6 @@ bare_dns_resolver_destroy(js_env_t *env, js_callback_info_t *info) {
   if (resolver->exiting) return NULL;
 
   ares_destroy(resolver->channel);
-  ares_library_cleanup();
 
   intrusive_list_for_each(next, &resolver->tasks) {
     bare_dns_resolve_task_t *task = intrusive_entry(next, bare_dns_resolve_task_t, node);
@@ -372,7 +378,6 @@ bare_dns__on_resolver_teardown(js_deferred_teardown_t *handle, void *data) {
   if (resolver->exiting) return;
 
   ares_destroy(resolver->channel);
-  ares_library_cleanup();
 
   intrusive_list_for_each(next, &resolver->tasks) {
     bare_dns_resolve_task_t *task = intrusive_entry(next, bare_dns_resolve_task_t, node);
@@ -386,6 +391,8 @@ bare_dns__on_resolver_teardown(js_deferred_teardown_t *handle, void *data) {
 
 static js_value_t *
 bare_dns_init_resolver(js_env_t *env, js_callback_info_t *info) {
+  uv_once(&bare_dns__init_resolver_guard, bare_dns__on_init_resolver);
+
   int err;
 
   js_value_t *handle;
@@ -395,13 +402,6 @@ bare_dns_init_resolver(js_env_t *env, js_callback_info_t *info) {
   assert(err == 0);
 
   intrusive_list_init(&resolver->tasks);
-
-  err = ares_library_init(ARES_LIB_INIT_ALL);
-
-  if (err != ARES_SUCCESS) {
-    js_throw_error(env, NULL, ares_strerror(err));
-    return NULL;
-  }
 
   struct ares_options opts;
   opts.sock_state_cb = bare_dns__on_socket_change;
@@ -576,6 +576,13 @@ bare_dns_resolve_txt(js_env_t *env, js_callback_info_t *info) {
 }
 
 static js_value_t *
+bare_dns_cleanup(js_env_t *env, js_callback_info_t *info) {
+  ares_library_cleanup();
+
+  return NULL;
+}
+
+static js_value_t *
 bare_dns_exports(js_env_t *env, js_value_t *exports) {
   int err;
 
@@ -592,6 +599,7 @@ bare_dns_exports(js_env_t *env, js_value_t *exports) {
   V("initResolver", bare_dns_init_resolver)
   V("destroyResolver", bare_dns_resolver_destroy)
   V("resolveTxt", bare_dns_resolve_txt)
+  V("cleanup", bare_dns_cleanup)
 #undef V
 
   return exports;
