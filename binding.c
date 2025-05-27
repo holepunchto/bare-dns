@@ -525,12 +525,12 @@ bare_dns_resolve_txt(js_env_t *env, js_callback_info_t *info) {
   ares_status_t status;
   status = ares_query_dnsrec(req->resolver->channel, (char *) hostname, ARES_CLASS_IN, ARES_REC_TYPE_TXT, bare_dns__on_resolve_txt, req, NULL);
 
+  free(hostname);
+
   if (err != ARES_SUCCESS) {
     js_throw_error(env, NULL, ares_strerror(err));
     return NULL;
   }
-
-  free(hostname);
 
   return NULL;
 }
