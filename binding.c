@@ -266,11 +266,22 @@ bare_dns_lookup(js_env_t *env, js_callback_info_t *info) {
 
 void
 bare_dns__on_poll_close(uv_handle_t *handle) {
-  uv_poll_t *poll = (uv_poll_t *) handle;
+  int err;
 
+  uv_poll_t *poll = (uv_poll_t *) handle;
   bare_dns_resolve_task_t *task = intrusive_entry(poll, bare_dns_resolve_task_t, poll);
+  bare_dns_resolver_t *resolver = task->resolver;
+
+  intrusive_list_remove(&resolver->tasks, &task->node);
 
   free(task);
+
+  if (resolver->exiting && intrusive_list_empty(&resolver->tasks)) {
+    ares_destroy(resolver->channel);
+
+    err = js_finish_deferred_teardown_callback(resolver->teardown);
+    assert(err == 0);
+  }
 }
 
 void
@@ -292,18 +303,22 @@ bare_dns__on_resolver_teardown(js_deferred_teardown_t *handle, void *data) {
 
   bare_dns_resolver_t *resolver = (bare_dns_resolver_t *) data;
 
+  if (resolver->exiting) return;
+
   resolver->exiting = true;
 
-  intrusive_list_for_each(next, &resolver->tasks) {
-    bare_dns_resolve_task_t *task = intrusive_entry(next, bare_dns_resolve_task_t, node);
+  if (!intrusive_list_empty(&resolver->tasks)) {
+    intrusive_list_for_each(next, &resolver->tasks) {
+      bare_dns_resolve_task_t *task = intrusive_entry(next, bare_dns_resolve_task_t, node);
 
-    uv_close((uv_handle_t *) &task->poll, bare_dns__on_poll_close);
+      uv_close((uv_handle_t *) &task->poll, bare_dns__on_poll_close);
+    }
+  } else {
+    ares_destroy(resolver->channel);
+
+    err = js_finish_deferred_teardown_callback(resolver->teardown);
+    assert(err == 0);
   }
-
-  ares_destroy(resolver->channel);
-
-  err = js_finish_deferred_teardown_callback(resolver->teardown);
-  assert(err == 0);
 }
 
 static js_value_t *
@@ -322,16 +337,22 @@ bare_dns_resolver_destroy(js_env_t *env, js_callback_info_t *info) {
   err = js_get_arraybuffer_info(env, argv[0], (void **) &resolver, NULL);
   assert(err == 0);
 
-  intrusive_list_for_each(next, &resolver->tasks) {
-    bare_dns_resolve_task_t *task = intrusive_entry(next, bare_dns_resolve_task_t, node);
+  if (resolver->exiting) return NULL;
 
-    uv_close((uv_handle_t *) &task->poll, bare_dns__on_poll_close);
+  resolver->exiting = true;
+
+  if (!intrusive_list_empty(&resolver->tasks)) {
+    intrusive_list_for_each(next, &resolver->tasks) {
+      bare_dns_resolve_task_t *task = intrusive_entry(next, bare_dns_resolve_task_t, node);
+
+      uv_close((uv_handle_t *) &task->poll, bare_dns__on_poll_close);
+    }
+  } else {
+    ares_destroy(resolver->channel);
+
+    err = js_finish_deferred_teardown_callback(resolver->teardown);
+    assert(err == 0);
   }
-
-  ares_destroy(resolver->channel);
-
-  err = js_finish_deferred_teardown_callback(resolver->teardown);
-  assert(err == 0);
 
   return NULL;
 }
@@ -376,8 +397,6 @@ bare_dns__on_socket_change(void *data, ares_socket_t socket, int read, int write
     err = uv_poll_start(&task->poll, events, bare_dns__on_poll_update);
     assert(err == 0);
   } else {
-    intrusive_list_remove(&resolver->tasks, &task->node);
-
     uv_close((uv_handle_t *) &task->poll, bare_dns__on_poll_close);
   }
 }
