@@ -10,14 +10,6 @@
 #include <utf.h>
 #include <uv.h>
 
-#ifndef offset_of
-#define offset_of(type, member) ((intptr_t) ((char *) (&(((type *) (0))->member))))
-#endif
-
-#ifndef container_of
-#define container_of(ptr, type, member) ((type *) ((char *) (ptr) - offset_of(type, member)))
-#endif
-
 typedef struct {
   uv_getaddrinfo_t handle;
 
@@ -308,7 +300,7 @@ void
 bare_dns__on_poll_close(uv_handle_t *handle) {
   uv_poll_t *poll = (uv_poll_t *) handle;
 
-  bare_dns_resolve_task_t *task = container_of(poll, bare_dns_resolve_task_t, poll);
+  bare_dns_resolve_task_t *task = intrusive_entry(poll, bare_dns_resolve_task_t, poll);
 
   free(task);
 }
@@ -317,7 +309,7 @@ void
 bare_dns__on_poll_update(uv_poll_t *poll, int status, int events) {
   assert(status == 0);
 
-  bare_dns_resolve_task_t *task = container_of(poll, bare_dns_resolve_task_t, poll);
+  bare_dns_resolve_task_t *task = intrusive_entry(poll, bare_dns_resolve_task_t, poll);
 
   ares_process_fd(
     task->resolver->channel,
