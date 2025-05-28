@@ -264,36 +264,6 @@ bare_dns_lookup(js_env_t *env, js_callback_info_t *info) {
   return handle;
 }
 
-static js_value_t *
-bare_dns_resolver_destroy(js_env_t *env, js_callback_info_t *info) {
-  int err;
-
-  size_t argc = 1;
-  js_value_t *argv[1];
-
-  err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
-  assert(err == 0);
-
-  assert(argc == 1);
-
-  bare_dns_resolver_t *resolver;
-  err = js_get_arraybuffer_info(env, argv[0], (void **) &resolver, NULL);
-  assert(err == 0);
-
-  ares_destroy(resolver->channel);
-
-  intrusive_list_for_each(next, &resolver->tasks) {
-    bare_dns_resolve_task_t *task = intrusive_entry(next, bare_dns_resolve_task_t, node);
-
-    free(task);
-  }
-
-  err = js_finish_deferred_teardown_callback(resolver->teardown);
-  assert(err == 0);
-
-  return NULL;
-}
-
 void
 bare_dns__on_poll_close(uv_handle_t *handle) {
   uv_poll_t *poll = (uv_poll_t *) handle;
@@ -316,11 +286,64 @@ bare_dns__on_poll_update(uv_poll_t *poll, int status, int events) {
   );
 }
 
+static void
+bare_dns__on_resolver_teardown(js_deferred_teardown_t *handle, void *data) {
+  int err;
+
+  bare_dns_resolver_t *resolver = (bare_dns_resolver_t *) data;
+
+  resolver->exiting = true;
+
+  intrusive_list_for_each(next, &resolver->tasks) {
+    bare_dns_resolve_task_t *task = intrusive_entry(next, bare_dns_resolve_task_t, node);
+
+    uv_close((uv_handle_t *) &task->poll, bare_dns__on_poll_close);
+  }
+
+  ares_destroy(resolver->channel);
+
+  err = js_finish_deferred_teardown_callback(resolver->teardown);
+  assert(err == 0);
+}
+
+static js_value_t *
+bare_dns_resolver_destroy(js_env_t *env, js_callback_info_t *info) {
+  int err;
+
+  size_t argc = 1;
+  js_value_t *argv[1];
+
+  err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
+  assert(err == 0);
+
+  assert(argc == 1);
+
+  bare_dns_resolver_t *resolver;
+  err = js_get_arraybuffer_info(env, argv[0], (void **) &resolver, NULL);
+  assert(err == 0);
+
+  intrusive_list_for_each(next, &resolver->tasks) {
+    bare_dns_resolve_task_t *task = intrusive_entry(next, bare_dns_resolve_task_t, node);
+
+    uv_close((uv_handle_t *) &task->poll, bare_dns__on_poll_close);
+  }
+
+  ares_destroy(resolver->channel);
+
+  err = js_finish_deferred_teardown_callback(resolver->teardown);
+  assert(err == 0);
+
+  return NULL;
+}
+
 void
 bare_dns__on_socket_change(void *data, ares_socket_t socket, int read, int write) {
   int err;
 
   bare_dns_resolver_t *resolver = (bare_dns_resolver_t *) data;
+
+  if (resolver->exiting) return;
+
   bare_dns_resolve_task_t *task = NULL;
 
   intrusive_list_for_each(next, &resolver->tasks) {
@@ -357,26 +380,6 @@ bare_dns__on_socket_change(void *data, ares_socket_t socket, int read, int write
 
     uv_close((uv_handle_t *) &task->poll, bare_dns__on_poll_close);
   }
-}
-
-static void
-bare_dns__on_resolver_teardown(js_deferred_teardown_t *handle, void *data) {
-  int err;
-
-  bare_dns_resolver_t *resolver = (bare_dns_resolver_t *) data;
-
-  resolver->exiting = true;
-
-  ares_destroy(resolver->channel);
-
-  intrusive_list_for_each(next, &resolver->tasks) {
-    bare_dns_resolve_task_t *task = intrusive_entry(next, bare_dns_resolve_task_t, node);
-
-    free(task);
-  }
-
-  err = js_finish_deferred_teardown_callback(resolver->teardown);
-  assert(err == 0);
 }
 
 static js_value_t *
