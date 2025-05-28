@@ -12,7 +12,7 @@ set(CARES_INSTALL OFF CACHE BOOL "Enable c-ares installation scripts" FORCE)
 set(CARES_BUILD_TOOLS OFF CACHE BOOL "Build the c-ares utility tools" FORCE)
 
 fetch_package("github:c-ares/c-ares@1.34.4")
-fetch_package("github:holepunchto/libintrusive")
+fetch_package("github:holepunchto/libintrusive#3903632")
 
 add_bare_module(bare_dns)
 

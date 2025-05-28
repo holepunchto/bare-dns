@@ -280,8 +280,6 @@ bare_dns_resolver_destroy(js_env_t *env, js_callback_info_t *info) {
   err = js_get_arraybuffer_info(env, argv[0], (void **) &resolver, NULL);
   assert(err == 0);
 
-  if (resolver->exiting) return NULL;
-
   ares_destroy(resolver->channel);
 
   intrusive_list_for_each(next, &resolver->tasks) {
@@ -367,7 +365,7 @@ bare_dns__on_resolver_teardown(js_deferred_teardown_t *handle, void *data) {
 
   bare_dns_resolver_t *resolver = (bare_dns_resolver_t *) data;
 
-  if (resolver->exiting) return;
+  resolver->exiting = true;
 
   ares_destroy(resolver->channel);
 
@@ -419,6 +417,8 @@ bare_dns__on_resolve_txt(void *data, ares_status_t status, size_t timeouts, cons
   int err;
 
   bare_dns_resolve_req_t *req = (bare_dns_resolve_req_t *) data;
+
+  if (req->resolver->exiting) return;
 
   js_env_t *env = req->env;
 
@@ -507,7 +507,7 @@ bare_dns__on_resolve_txt(void *data, ares_status_t status, size_t timeouts, cons
     assert(err == 0);
   }
 
-  if (!req->resolver->exiting) js_call_function(env, ctx, cb, 2, args, NULL);
+  js_call_function(env, ctx, cb, 2, args, NULL);
 
   err = js_close_handle_scope(env, scope);
   assert(err == 0);
