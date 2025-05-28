@@ -74,6 +74,4 @@ exports.resolveTxt = function resolveTxt(hostname, cb) {
   exports.Resolver.global.resolveTxt(hostname, cb)
 }
 
-Bare.on('exit', () => binding.cleanup())
-
 function noop() {}

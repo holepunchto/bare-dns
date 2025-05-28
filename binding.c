@@ -568,13 +568,6 @@ bare_dns_resolve_txt(js_env_t *env, js_callback_info_t *info) {
 }
 
 static js_value_t *
-bare_dns_cleanup(js_env_t *env, js_callback_info_t *info) {
-  ares_library_cleanup();
-
-  return NULL;
-}
-
-static js_value_t *
 bare_dns_exports(js_env_t *env, js_value_t *exports) {
   int err;
 
@@ -591,7 +584,6 @@ bare_dns_exports(js_env_t *env, js_value_t *exports) {
   V("initResolver", bare_dns_init_resolver)
   V("destroyResolver", bare_dns_resolver_destroy)
   V("resolveTxt", bare_dns_resolve_txt)
-  V("cleanup", bare_dns_cleanup)
 #undef V
 
   return exports;
