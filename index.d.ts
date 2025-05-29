@@ -6,9 +6,16 @@ interface LookupOptions {
   all?: boolean
 }
 
-declare namespace dns {
-  export { IPFamily, LookupOptions }
+declare class DNSResolver {
+  resolveTxt(
+    hostname: string,
+    cb: (err: Error | null, records: string[][]) => void
+  ): void
 
+  destroy(): void
+}
+
+declare namespace dns {
   export function lookup(
     hostname: string,
     cb: (
@@ -36,6 +43,13 @@ declare namespace dns {
       addresses: { address: string; family: IPFamily }[] | null
     ) => void
   ): void
+
+  export function resolveTxt(
+    hostname: string,
+    cb: (err: Error | null, records: string[][]) => void
+  ): void
+
+  export { type IPFamily, type LookupOptions, DNSResolver as Resolver }
 }
 
 export = dns
