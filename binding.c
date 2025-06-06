@@ -250,6 +250,8 @@ bare_dns_lookup(js_env_t *env, js_callback_info_t *info) {
 
   if (err < 0) {
     err = js_throw_error(env, uv_err_name(err), uv_strerror(err));
+    assert(err == 0);
+
     return NULL;
   }
 
