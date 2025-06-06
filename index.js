@@ -1,5 +1,22 @@
 const binding = require('./binding')
 
+exports.Resolver = class DNSResolver {
+  constructor() {
+    this._handle = binding.initResolver()
+  }
+
+  resolveTxt(hostname, cb = noop) {
+    binding.resolveTxt(this._handle, hostname, cb, this)
+  }
+
+  destroy() {
+    binding.destroyResolver(this._handle)
+    this._handle = null
+  }
+
+  static global = new this()
+}
+
 function onlookup(err, addresses) {
   const req = this
 
@@ -52,3 +69,9 @@ exports.lookup = function lookup(hostname, opts = {}, cb) {
     all ? onlookupall : onlookup
   )
 }
+
+exports.resolveTxt = function resolveTxt(hostname, cb) {
+  exports.Resolver.global.resolveTxt(hostname, cb)
+}
+
+function noop() {}

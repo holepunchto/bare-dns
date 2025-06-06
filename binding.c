@@ -1,5 +1,8 @@
+#include <ares.h>
 #include <assert.h>
 #include <bare.h>
+#include <intrusive.h>
+#include <intrusive/list.h>
 #include <js.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -19,6 +22,40 @@ typedef struct {
 
   js_deferred_teardown_t *teardown;
 } bare_dns_lookup_t;
+
+typedef struct {
+  ares_channel channel;
+  intrusive_list_t tasks;
+
+  bool exiting;
+
+  js_env_t *env;
+  js_deferred_teardown_t *teardown;
+} bare_dns_resolver_t;
+
+typedef struct {
+  bare_dns_resolver_t *resolver;
+
+  ares_socket_t socket;
+  uv_poll_t poll;
+
+  intrusive_list_node_t node;
+} bare_dns_resolve_task_t;
+
+typedef struct {
+  bare_dns_resolver_t *resolver;
+
+  js_env_t *env;
+  js_ref_t *ctx;
+  js_ref_t *cb;
+} bare_dns_resolve_req_t;
+
+static uv_once_t bare_dns__init_resolver_guard = UV_ONCE_INIT;
+
+static void
+bare_dns__on_init_resolver(void) {
+  ares_library_init(ARES_LIB_INIT_ALL);
+}
 
 static void
 bare_dns__on_lookup(uv_getaddrinfo_t *handle, int status, struct addrinfo *res) {
@@ -227,6 +264,331 @@ bare_dns_lookup(js_env_t *env, js_callback_info_t *info) {
   return handle;
 }
 
+void
+bare_dns__on_poll_close(uv_handle_t *handle) {
+  int err;
+
+  uv_poll_t *poll = (uv_poll_t *) handle;
+  bare_dns_resolve_task_t *task = intrusive_entry(poll, bare_dns_resolve_task_t, poll);
+  bare_dns_resolver_t *resolver = task->resolver;
+
+  intrusive_list_remove(&resolver->tasks, &task->node);
+
+  free(task);
+
+  if (resolver->exiting && intrusive_list_empty(&resolver->tasks)) {
+    ares_destroy(resolver->channel);
+
+    err = js_finish_deferred_teardown_callback(resolver->teardown);
+    assert(err == 0);
+  }
+}
+
+void
+bare_dns__on_poll_update(uv_poll_t *poll, int status, int events) {
+  assert(status == 0);
+
+  bare_dns_resolve_task_t *task = intrusive_entry(poll, bare_dns_resolve_task_t, poll);
+
+  ares_process_fd(
+    task->resolver->channel,
+    events & UV_READABLE ? task->socket : ARES_SOCKET_BAD,
+    events & UV_WRITABLE ? task->socket : ARES_SOCKET_BAD
+  );
+}
+
+static void
+bare_dns__on_resolver_teardown(js_deferred_teardown_t *handle, void *data) {
+  int err;
+
+  bare_dns_resolver_t *resolver = (bare_dns_resolver_t *) data;
+
+  if (resolver->exiting) return;
+
+  resolver->exiting = true;
+
+  if (!intrusive_list_empty(&resolver->tasks)) {
+    intrusive_list_for_each(next, &resolver->tasks) {
+      bare_dns_resolve_task_t *task = intrusive_entry(next, bare_dns_resolve_task_t, node);
+
+      uv_close((uv_handle_t *) &task->poll, bare_dns__on_poll_close);
+    }
+  } else {
+    ares_destroy(resolver->channel);
+
+    err = js_finish_deferred_teardown_callback(resolver->teardown);
+    assert(err == 0);
+  }
+}
+
+static js_value_t *
+bare_dns_resolver_destroy(js_env_t *env, js_callback_info_t *info) {
+  int err;
+
+  size_t argc = 1;
+  js_value_t *argv[1];
+
+  err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
+  assert(err == 0);
+
+  assert(argc == 1);
+
+  bare_dns_resolver_t *resolver;
+  err = js_get_arraybuffer_info(env, argv[0], (void **) &resolver, NULL);
+  assert(err == 0);
+
+  if (resolver->exiting) return NULL;
+
+  resolver->exiting = true;
+
+  if (!intrusive_list_empty(&resolver->tasks)) {
+    intrusive_list_for_each(next, &resolver->tasks) {
+      bare_dns_resolve_task_t *task = intrusive_entry(next, bare_dns_resolve_task_t, node);
+
+      uv_close((uv_handle_t *) &task->poll, bare_dns__on_poll_close);
+    }
+  } else {
+    ares_destroy(resolver->channel);
+
+    err = js_finish_deferred_teardown_callback(resolver->teardown);
+    assert(err == 0);
+  }
+
+  return NULL;
+}
+
+void
+bare_dns__on_socket_change(void *data, ares_socket_t socket, int read, int write) {
+  int err;
+
+  bare_dns_resolver_t *resolver = (bare_dns_resolver_t *) data;
+
+  if (resolver->exiting) return;
+
+  bare_dns_resolve_task_t *task = NULL;
+
+  intrusive_list_for_each(next, &resolver->tasks) {
+    bare_dns_resolve_task_t *t = intrusive_entry(next, bare_dns_resolve_task_t, node);
+
+    if (t->socket == socket) {
+      task = t;
+      break;
+    }
+  }
+
+  if (task == NULL) {
+    task = (bare_dns_resolve_task_t *) malloc(sizeof(bare_dns_resolve_task_t));
+
+    task->resolver = resolver;
+    task->socket = socket;
+
+    intrusive_list_append(&resolver->tasks, &task->node);
+  }
+
+  if (read || write) {
+    uv_loop_t *loop;
+    err = js_get_env_loop(resolver->env, &loop);
+    assert(err == 0);
+
+    err = uv_poll_init_socket(loop, &task->poll, task->socket);
+    assert(err == 0);
+
+    int events = (read ? UV_READABLE : 0) | (write ? UV_WRITABLE : 0);
+    err = uv_poll_start(&task->poll, events, bare_dns__on_poll_update);
+    assert(err == 0);
+  } else {
+    uv_close((uv_handle_t *) &task->poll, bare_dns__on_poll_close);
+  }
+}
+
+static js_value_t *
+bare_dns_init_resolver(js_env_t *env, js_callback_info_t *info) {
+  uv_once(&bare_dns__init_resolver_guard, bare_dns__on_init_resolver);
+
+  int err;
+
+  js_value_t *handle;
+
+  bare_dns_resolver_t *resolver;
+  err = js_create_arraybuffer(env, sizeof(bare_dns_resolver_t), (void **) &resolver, &handle);
+  assert(err == 0);
+
+  intrusive_list_init(&resolver->tasks);
+
+  struct ares_options opts;
+  opts.sock_state_cb = bare_dns__on_socket_change;
+  opts.sock_state_cb_data = resolver;
+
+  err = ares_init_options(&resolver->channel, &opts, ARES_OPT_SOCK_STATE_CB);
+
+  if (err != ARES_SUCCESS) {
+    js_throw_error(env, NULL, ares_strerror(err));
+    return NULL;
+  }
+
+  resolver->env = env;
+
+  err = js_add_deferred_teardown_callback(env, bare_dns__on_resolver_teardown, (void *) resolver, &resolver->teardown);
+  assert(err == 0);
+
+  return handle;
+}
+
+void
+bare_dns__on_resolve_txt(void *data, ares_status_t status, size_t timeouts, const ares_dns_record_t *dnsrec) {
+  int err;
+
+  bare_dns_resolve_req_t *req = (bare_dns_resolve_req_t *) data;
+
+  if (req->resolver->exiting) return;
+
+  js_env_t *env = req->env;
+
+  js_handle_scope_t *scope;
+  err = js_open_handle_scope(env, &scope);
+  assert(err == 0);
+
+  js_value_t *ctx;
+  err = js_get_reference_value(env, req->ctx, &ctx);
+  assert(err == 0);
+
+  js_value_t *cb;
+  err = js_get_reference_value(env, req->cb, &cb);
+  assert(err == 0);
+
+  err = js_delete_reference(env, req->cb);
+  assert(err == 0);
+
+  err = js_delete_reference(env, req->ctx);
+  assert(err == 0);
+
+  js_value_t *args[2];
+
+  if (status == ARES_SUCCESS) {
+    unsigned char *buf;
+    size_t len = 0;
+
+    status = ares_dns_write(dnsrec, &buf, &len);
+    assert(status == ARES_SUCCESS);
+
+    struct ares_txt_ext *reply;
+
+    status = ares_parse_txt_reply_ext(buf, len, &reply);
+    assert(status == ARES_SUCCESS);
+
+    err = js_get_null(env, &args[0]);
+    assert(err == 0);
+
+    js_value_t *result;
+    err = js_create_array(env, &result);
+    assert(err == 0);
+
+    uint32_t i = 0;
+
+    for (struct ares_txt_ext *next = reply; next != NULL; next = next->next) {
+      js_value_t *chunk;
+      err = js_create_string_utf8(env, (utf8_t *) next->txt, next->length, &chunk);
+      assert(err == 0);
+
+      if (next->record_start) {
+        js_value_t *record;
+        err = js_create_array(env, &record);
+        assert(err == 0);
+
+        err = js_set_element(env, record, 0, chunk);
+        assert(err == 0);
+
+        err = js_set_element(env, result, i++, record);
+        assert(err == 0);
+      } else {
+        js_value_t *record;
+        err = js_get_element(env, result, i, &record);
+        assert(err == 0);
+
+        uint32_t len;
+        err = js_get_array_length(env, record, &len);
+        assert(err == 0);
+
+        err = js_set_element(env, record, len, chunk);
+        assert(err == 0);
+      }
+    }
+
+    args[1] = result;
+
+    ares_free_data(reply);
+  } else {
+    js_value_t *message;
+    err = js_create_string_utf8(env, (utf8_t *) ares_strerror(status), -1, &message);
+    assert(err == 0);
+
+    err = js_create_error(env, NULL, message, &args[0]);
+    assert(err == 0);
+
+    err = js_get_null(env, &args[1]);
+    assert(err == 0);
+  }
+
+  js_call_function(env, ctx, cb, 2, args, NULL);
+
+  err = js_close_handle_scope(env, scope);
+  assert(err == 0);
+}
+
+static js_value_t *
+bare_dns_resolve_txt(js_env_t *env, js_callback_info_t *info) {
+  int err;
+
+  size_t argc = 4;
+  js_value_t *argv[4];
+
+  err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
+  assert(err == 0);
+
+  assert(argc == 4);
+
+  bare_dns_resolver_t *resolver;
+  err = js_get_arraybuffer_info(env, argv[0], (void **) &resolver, NULL);
+  assert(err == 0);
+
+  size_t len;
+  err = js_get_value_string_utf8(env, argv[1], NULL, 0, &len);
+  assert(err == 0);
+
+  len += 1 /* NULL */;
+
+  utf8_t *hostname = malloc(len);
+  err = js_get_value_string_utf8(env, argv[1], hostname, len, NULL);
+  assert(err == 0);
+
+  js_value_t *handle;
+
+  bare_dns_resolve_req_t *req;
+  err = js_create_arraybuffer(env, sizeof(bare_dns_resolve_req_t), (void **) &req, &handle);
+  assert(err == 0);
+
+  req->resolver = resolver;
+  req->env = env;
+
+  err = js_create_reference(env, argv[2], 1, &req->cb);
+  assert(err == 0);
+
+  err = js_create_reference(env, argv[3], 1, &req->ctx);
+  assert(err == 0);
+
+  ares_status_t status;
+  status = ares_query_dnsrec(req->resolver->channel, (char *) hostname, ARES_CLASS_IN, ARES_REC_TYPE_TXT, bare_dns__on_resolve_txt, req, NULL);
+
+  free(hostname);
+
+  if (err != ARES_SUCCESS) {
+    js_throw_error(env, NULL, ares_strerror(err));
+    return NULL;
+  }
+
+  return NULL;
+}
+
 static js_value_t *
 bare_dns_exports(js_env_t *env, js_value_t *exports) {
   int err;
@@ -241,6 +603,9 @@ bare_dns_exports(js_env_t *env, js_value_t *exports) {
   }
 
   V("lookup", bare_dns_lookup)
+  V("initResolver", bare_dns_init_resolver)
+  V("destroyResolver", bare_dns_resolver_destroy)
+  V("resolveTxt", bare_dns_resolve_txt)
 #undef V
 
   return exports;
