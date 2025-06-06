@@ -1,6 +1,6 @@
 {
   "name": "bare-dns",
-  "version": "2.0.5-0",
+  "version": "2.0.6-0",
   "description": "Domain name resolution for JavaScript",
   "exports": {
     ".": {
