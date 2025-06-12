@@ -261,7 +261,7 @@ bare_dns_lookup(js_env_t *env, js_callback_info_t *info) {
   return handle;
 }
 
-void
+static void
 bare_dns__on_poll_close(uv_handle_t *handle) {
   int err;
 
@@ -283,7 +283,7 @@ bare_dns__on_poll_close(uv_handle_t *handle) {
   }
 }
 
-void
+static void
 bare_dns__on_poll_update(uv_poll_t *poll, int status, int events) {
   assert(status == 0);
 
@@ -320,7 +320,7 @@ bare_dns__on_resolver_teardown(js_deferred_teardown_t *handle, void *data) {
   }
 }
 
-void
+static void
 bare_dns__on_socket_change(void *data, ares_socket_t socket, int read, int write) {
   int err;
 
@@ -434,7 +434,7 @@ bare_dns_destroy_resolver(js_env_t *env, js_callback_info_t *info) {
   return NULL;
 }
 
-void
+static void
 bare_dns__on_resolve_txt(void *data, ares_status_t status, size_t timeouts, const ares_dns_record_t *dnsrec) {
   int err;
 
