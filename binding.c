@@ -465,17 +465,6 @@ bare_dns__on_resolve_txt(void *data, ares_status_t status, size_t timeouts, cons
   js_value_t *args[2];
 
   if (status == ARES_SUCCESS) {
-    unsigned char *buf;
-    size_t len = 0;
-
-    status = ares_dns_write(dnsrec, &buf, &len);
-    assert(status == ARES_SUCCESS);
-
-    struct ares_txt_ext *reply;
-
-    status = ares_parse_txt_reply_ext(buf, len, &reply);
-    assert(status == ARES_SUCCESS);
-
     err = js_get_null(env, &args[0]);
     assert(err == 0);
 
@@ -483,40 +472,33 @@ bare_dns__on_resolve_txt(void *data, ares_status_t status, size_t timeouts, cons
     err = js_create_array(env, &result);
     assert(err == 0);
 
-    uint32_t i = 0;
+    for (size_t i = 0, n = ares_dns_record_rr_cnt(dnsrec, ARES_SECTION_ANSWER); i < n; i++) {
+      const ares_dns_rr_t *rr = ares_dns_record_rr_get_const(dnsrec, ARES_SECTION_ANSWER, i);
 
-    for (struct ares_txt_ext *next = reply; next != NULL; next = next->next) {
-      js_value_t *chunk;
-      err = js_create_string_utf8(env, (utf8_t *) next->txt, next->length, &chunk);
+      if (ares_dns_rr_get_type(rr) != ARES_REC_TYPE_TXT) continue;
+
+      js_value_t *record;
+      err = js_create_array(env, &record);
       assert(err == 0);
 
-      if (next->record_start) {
-        js_value_t *record;
-        err = js_create_array(env, &record);
+      err = js_set_element(env, result, (uint32_t) i, record);
+      assert(err == 0);
+
+      for (size_t i = 0, n = ares_dns_rr_get_abin_cnt(rr, ARES_RR_TXT_DATA); i < n; i++) {
+        size_t len;
+
+        const uint8_t *data = ares_dns_rr_get_abin(rr, ARES_RR_TXT_DATA, i, &len);
+
+        js_value_t *chunk;
+        err = js_create_string_utf8(env, (const utf8_t *) data, len, &chunk);
         assert(err == 0);
 
-        err = js_set_element(env, record, 0, chunk);
-        assert(err == 0);
-
-        err = js_set_element(env, result, i++, record);
-        assert(err == 0);
-      } else {
-        js_value_t *record;
-        err = js_get_element(env, result, i, &record);
-        assert(err == 0);
-
-        uint32_t len;
-        err = js_get_array_length(env, record, &len);
-        assert(err == 0);
-
-        err = js_set_element(env, record, len, chunk);
+        err = js_set_element(env, record, (uint32_t) i, chunk);
         assert(err == 0);
       }
     }
 
     args[1] = result;
-
-    ares_free_data(reply);
   } else {
     js_value_t *message;
     err = js_create_string_utf8(env, (utf8_t *) ares_strerror(status), -1, &message);
