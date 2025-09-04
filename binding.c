@@ -58,6 +58,8 @@ bare_dns__on_lookup(uv_getaddrinfo_t *handle, int status, struct addrinfo *res) 
 
   bare_dns_lookup_t *req = (bare_dns_lookup_t *) handle;
 
+  js_deferred_teardown_t *teardown = req->teardown;
+
   js_env_t *env = req->env;
 
   js_handle_scope_t *scope;
@@ -167,12 +169,12 @@ bare_dns__on_lookup(uv_getaddrinfo_t *handle, int status, struct addrinfo *res) 
 
   uv_freeaddrinfo(res);
 
-  if (!req->exiting) js_call_function(req->env, ctx, cb, 2, args, NULL);
+  if (!req->exiting) js_call_function(env, ctx, cb, 2, args, NULL);
 
-  err = js_close_handle_scope(req->env, scope);
+  err = js_close_handle_scope(env, scope);
   assert(err == 0);
 
-  err = js_finish_deferred_teardown_callback(req->teardown);
+  err = js_finish_deferred_teardown_callback(teardown);
   assert(err == 0);
 }
 
