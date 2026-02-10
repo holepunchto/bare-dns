@@ -61,13 +61,7 @@ exports.lookup = function lookup(hostname, opts = {}, cb) {
     handle: null
   }
 
-  req.handle = binding.lookup(
-    hostname,
-    family || 0,
-    all,
-    req,
-    all ? onlookupall : onlookup
-  )
+  req.handle = binding.lookup(hostname, family || 0, all, req, all ? onlookupall : onlookup)
 }
 
 exports.resolveTxt = function resolveTxt(hostname, cb) {

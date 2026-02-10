@@ -7,10 +7,7 @@ interface LookupOptions {
 }
 
 declare class DNSResolver {
-  resolveTxt(
-    hostname: string,
-    cb: (err: Error | null, records: string[][]) => void
-  ): void
+  resolveTxt(hostname: string, cb: (err: Error | null, records: string[][]) => void): void
 
   destroy(): void
 }
@@ -18,30 +15,19 @@ declare class DNSResolver {
 declare namespace dns {
   export function lookup(
     hostname: string,
-    cb: (
-      err: Error | null,
-      address: string | null,
-      family: IPFamily | 0
-    ) => void
+    cb: (err: Error | null, address: string | null, family: IPFamily | 0) => void
   ): void
 
   export function lookup(
     hostname: string,
     opts: LookupOptions & { all?: false },
-    cb: (
-      err: Error | null,
-      address: string | null,
-      family: IPFamily | 0
-    ) => void
+    cb: (err: Error | null, address: string | null, family: IPFamily | 0) => void
   ): void
 
   export function lookup(
     hostname: string,
     opts: LookupOptions & { all: true },
-    cb: (
-      err: Error | null,
-      addresses: { address: string; family: IPFamily }[] | null
-    ) => void
+    cb: (err: Error | null, addresses: { address: string; family: IPFamily }[] | null) => void
   ): void
 
   export function resolveTxt(
