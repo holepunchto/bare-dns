@@ -5,14 +5,18 @@ interface LookupOptions {
   /** Restrict resolution to `4` (IPv4) or `6` (IPv6), or `0` for either. Defaults to `0`. */
   family?: `IPv${IPFamily}` | IPFamily | 0
   hints?: number
-  /** When `true`, resolve every address for `hostname` instead of just the first. Defaults to `false`. */
+  /**
+   * When `true`, resolve every address for `hostname` instead of just the first. Defaults to
+   * `false`.
+   */
   all?: boolean
 }
 
 /** An independent resolver for DNS queries, used to look up TXT records via the DNS protocol. */
 declare class DNSResolver {
   /**
-   * Use the DNS protocol to resolve TXT records for `hostname`. The callback receives an array of records, each itself an array of the strings that make up that record.
+   * Use the DNS protocol to resolve TXT records for `hostname`. The callback receives an array of
+   * records, each itself an array of the strings that make up that record.
    * @param hostname - The host name to query TXT records for.
    * @param cb - Called with `(err, records)`; each record is an array of the strings it is made of.
    */
@@ -24,7 +28,9 @@ declare class DNSResolver {
 
 declare namespace dns {
   /**
-   * Resolve `hostname` into an IP address using the operating system's `getaddrinfo` facility, not the DNS protocol directly. With `all: true`, the callback receives every resolved address instead of just the first.
+   * Resolve `hostname` into an IP address using the operating system's `getaddrinfo` facility, not
+   * the DNS protocol directly. With `all: true`, the callback receives every resolved address
+   * instead of just the first.
    * @param hostname - The host name to resolve.
    * @param cb - Called with `(err, address, family)`, or `(err, addresses)` when `all: true`.
    */
@@ -46,7 +52,8 @@ declare namespace dns {
   ): void
 
   /**
-   * Use the DNS protocol to resolve TXT records for `hostname`. The callback receives an array of records, each itself an array of the strings that make up that record.
+   * Use the DNS protocol to resolve TXT records for `hostname`. The callback receives an array of
+   * records, each itself an array of the strings that make up that record.
    * @param hostname - The host name to query TXT records for.
    * @param cb - Called with `(err, records)`; each record is an array of the strings it is made of.
    */
