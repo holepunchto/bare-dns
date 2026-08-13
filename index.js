@@ -1,21 +1,9 @@
 const binding = require('./binding')
+const constants = require('./lib/constants')
+const errors = require('./lib/errors')
+const DNSResolver = require('./lib/resolver')
 
-exports.Resolver = class DNSResolver {
-  constructor() {
-    this._handle = binding.initResolver()
-  }
-
-  resolveTxt(hostname, cb = noop) {
-    binding.resolveTxt(this._handle, hostname, cb, this)
-  }
-
-  destroy() {
-    binding.destroyResolver(this._handle)
-    this._handle = null
-  }
-
-  static global = new this()
-}
+exports.Resolver = DNSResolver
 
 function onlookup(err, addresses) {
   const req = this
@@ -64,8 +52,84 @@ exports.lookup = function lookup(hostname, opts = {}, cb) {
   req.handle = binding.lookup(hostname, family || 0, all, req, all ? onlookupall : onlookup)
 }
 
-exports.resolveTxt = function resolveTxt(hostname, cb) {
-  exports.Resolver.global.resolveTxt(hostname, cb)
+// The module level functions all operate on the global resolver, mirroring how
+// Node.js exposes them alongside the `Resolver` class.
+exports.getServers = function getServers() {
+  return DNSResolver.global.getServers()
 }
 
-function noop() {}
+exports.setServers = function setServers(servers) {
+  return DNSResolver.global.setServers(servers)
+}
+
+exports.setLocalAddress = function setLocalAddress(ipv4, ipv6) {
+  return DNSResolver.global.setLocalAddress(ipv4, ipv6)
+}
+
+exports.cancel = function cancel() {
+  return DNSResolver.global.cancel()
+}
+
+exports.resolve = function resolve(hostname, rrtype, cb) {
+  return DNSResolver.global.resolve(hostname, rrtype, cb)
+}
+
+exports.resolve4 = function resolve4(hostname, opts, cb) {
+  return DNSResolver.global.resolve4(hostname, opts, cb)
+}
+
+exports.resolve6 = function resolve6(hostname, opts, cb) {
+  return DNSResolver.global.resolve6(hostname, opts, cb)
+}
+
+exports.resolveAny = function resolveAny(hostname, cb) {
+  return DNSResolver.global.resolveAny(hostname, cb)
+}
+
+exports.resolveCaa = function resolveCaa(hostname, cb) {
+  return DNSResolver.global.resolveCaa(hostname, cb)
+}
+
+exports.resolveCname = function resolveCname(hostname, cb) {
+  return DNSResolver.global.resolveCname(hostname, cb)
+}
+
+exports.resolveMx = function resolveMx(hostname, cb) {
+  return DNSResolver.global.resolveMx(hostname, cb)
+}
+
+exports.resolveNaptr = function resolveNaptr(hostname, cb) {
+  return DNSResolver.global.resolveNaptr(hostname, cb)
+}
+
+exports.resolveNs = function resolveNs(hostname, cb) {
+  return DNSResolver.global.resolveNs(hostname, cb)
+}
+
+exports.resolvePtr = function resolvePtr(hostname, cb) {
+  return DNSResolver.global.resolvePtr(hostname, cb)
+}
+
+exports.resolveSoa = function resolveSoa(hostname, cb) {
+  return DNSResolver.global.resolveSoa(hostname, cb)
+}
+
+exports.resolveSrv = function resolveSrv(hostname, cb) {
+  return DNSResolver.global.resolveSrv(hostname, cb)
+}
+
+exports.resolveTlsa = function resolveTlsa(hostname, cb) {
+  return DNSResolver.global.resolveTlsa(hostname, cb)
+}
+
+exports.resolveTxt = function resolveTxt(hostname, cb) {
+  return DNSResolver.global.resolveTxt(hostname, cb)
+}
+
+exports.reverse = function reverse(ip, cb) {
+  return DNSResolver.global.reverse(ip, cb)
+}
+
+exports.constants = constants
+exports.errors = errors
+exports.promises = require('./lib/promises')
