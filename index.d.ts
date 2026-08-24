@@ -102,10 +102,15 @@ interface DNSResolver {
 
   /**
    * Aborts every query outstanding on this resolver. Each pending callback is
-   * invoked with `ECANCELLED` before this returns.
+   * invoked with `ECANCELLED`.
    */
   cancel(): void
 
+  /**
+   * Cancels every query outstanding on this resolver, so that none is left
+   * without an answer, and releases the resources it holds. A query made after
+   * this throws.
+   */
   destroy(): void
 
   resolve(hostname: string, cb: Callback<string[]>): void

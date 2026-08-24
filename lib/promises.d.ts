@@ -85,10 +85,15 @@ interface DNSPromiseResolver {
 
   /**
    * Aborts every query outstanding on this resolver. Each pending promise is
-   * rejected with `ECANCELLED` before this returns.
+   * rejected with `ECANCELLED`.
    */
   cancel(): void
 
+  /**
+   * Cancels every query outstanding on this resolver, so that none is left
+   * without an answer, and releases the resources it holds. A query made after
+   * this rejects.
+   */
   destroy(): void
 
   resolve(hostname: string, rrtype?: 'A' | 'AAAA' | 'CNAME' | 'NS' | 'PTR'): Promise<string[]>
