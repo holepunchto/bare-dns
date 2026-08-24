@@ -52,8 +52,6 @@ exports.lookup = function lookup(hostname, opts = {}, cb) {
   req.handle = binding.lookup(hostname, family || 0, all, req, all ? onlookupall : onlookup)
 }
 
-// The module level functions all operate on the global resolver, mirroring how
-// Node.js exposes them alongside the `Resolver` class.
 exports.getServers = function getServers() {
   return DNSResolver.global.getServers()
 }
