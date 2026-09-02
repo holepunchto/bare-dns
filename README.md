@@ -16,6 +16,10 @@ dns.lookup('github.com', (err, address, family) => {
 })
 ```
 
+## API
+
+See the [`bare-dns` reference](https://docs.pears.com/reference/bare/modules/bare-dns).
+
 ## License
 
 Apache-2.0

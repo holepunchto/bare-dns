@@ -1,11 +1,17 @@
 import DNSError from './lib/errors'
 import constants from './lib/constants'
 
+/** The IP address family: `4` for IPv4 or `6` for IPv6. */
 type IPFamily = 4 | 6
 
 interface LookupOptions {
+  /** Restrict resolution to `4` (IPv4) or `6` (IPv6), or `0` for either. Defaults to `0`. */
   family?: `IPv${IPFamily}` | IPFamily | 0
   hints?: number
+  /**
+   * When `true`, resolve every address for `hostname` instead of just the first. Defaults to
+   * `false`.
+   */
   all?: boolean
 }
 
@@ -95,6 +101,7 @@ type RecordType =
 
 type Callback<T> = (err: Error | null, result: T) => void
 
+/** An independent resolver for DNS queries. */
 interface DNSResolver {
   getServers(): string[]
   setServers(servers: string[]): void
@@ -146,6 +153,12 @@ interface DNSResolver {
   resolveSoa(hostname: string, cb: Callback<SOARecord>): void
   resolveSrv(hostname: string, cb: Callback<SRVRecord[]>): void
   resolveTlsa(hostname: string, cb: Callback<TLSARecord[]>): void
+  /**
+   * Use the DNS protocol to resolve TXT records for `hostname`. The callback receives an array of
+   * records, each itself an array of the strings that make up that record.
+   * @param hostname - The host name to query TXT records for.
+   * @param cb - Called with `(err, records)`; each record is an array of the strings it is made of.
+   */
   resolveTxt(hostname: string, cb: Callback<string[][]>): void
 
   /**
@@ -167,6 +180,13 @@ declare namespace DNSResolver {
 }
 
 declare namespace dns {
+  /**
+   * Resolve `hostname` into an IP address using the operating system's `getaddrinfo` facility, not
+   * the DNS protocol directly. With `all: true`, the callback receives every resolved address
+   * instead of just the first.
+   * @param hostname - The host name to resolve.
+   * @param cb - Called with `(err, address, family)`, or `(err, addresses)` when `all: true`.
+   */
   export function lookup(
     hostname: string,
     cb: (err: Error | null, address: string | null, family: IPFamily | 0) => void
