@@ -11,6 +11,13 @@ set(CARES_SHARED OFF CACHE BOOL "Build the shared c-ares library" FORCE)
 set(CARES_INSTALL OFF CACHE BOOL "Enable c-ares installation scripts" FORCE)
 set(CARES_BUILD_TOOLS OFF CACHE BOOL "Build the c-ares utility tools" FORCE)
 
+# c-ares detects pipe2() in the SDK headers and calls it without an availability
+# guard, which fails to compile when the deployment target predates iOS 27 and
+# its sibling releases. Force the pipe() fallback instead.
+if(APPLE)
+  set(HAVE_PIPE2 OFF CACHE BOOL "Enable pipe2() support in c-ares" FORCE)
+endif()
+
 fetch_package("github:c-ares/c-ares@1.34.4")
 fetch_package("github:holepunchto/libintrusive#3903632")
 
