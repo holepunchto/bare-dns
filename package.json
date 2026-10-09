@@ -47,7 +47,7 @@
   },
   "homepage": "https://github.com/holepunchto/bare-dns",
   "engines": {
-    "bare": ">=1.7.0"
+    "bare": ">=1.33.0"
   },
   "devDependencies": {
     "bare-buffer": "^3.0.2",
