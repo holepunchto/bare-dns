@@ -1141,9 +1141,72 @@ bare_dns_addr_to_ptr(js_env_t *env, js_callback_info_t *info) {
   return result;
 }
 
+#if defined(__ANDROID__)
+
+static jobject
+bare_dns__get_connectivity_manager(JNIEnv *jni, jobject context) {
+  jclass cls = (*jni)->GetObjectClass(jni, context);
+
+  jmethodID get_system_service = (*jni)->GetMethodID(jni, cls, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;");
+
+  jobject manager = NULL;
+
+  if (get_system_service) {
+    jstring name = (*jni)->NewStringUTF(jni, "connectivity");
+
+    if (name) {
+      manager = (*jni)->CallObjectMethod(jni, context, get_system_service, name);
+
+      (*jni)->DeleteLocalRef(jni, name);
+    }
+  }
+
+  if ((*jni)->ExceptionCheck(jni)) {
+    (*jni)->ExceptionClear(jni);
+
+    manager = NULL;
+  }
+
+  (*jni)->DeleteLocalRef(jni, cls);
+
+  return manager;
+}
+
+static void
+bare_dns__init_android(void) {
+  int err;
+
+  JavaVM *jvm;
+  err = bare_context_get("bare.android.jvm.v1", (void **) &jvm);
+  if (err < 0) return;
+
+  jobject context;
+  err = bare_context_get("bare.android.context.v1", (void **) &context);
+  if (err < 0) return;
+
+  JNIEnv *jni;
+  err = (*jvm)->GetEnv(jvm, (void **) &jni, JNI_VERSION_1_6);
+  assert(err == JNI_OK);
+
+  jobject manager = bare_dns__get_connectivity_manager(jni, context);
+
+  if (manager) {
+    ares_library_init_jvm(jvm);
+    ares_library_init_android(manager);
+
+    (*jni)->DeleteLocalRef(jni, manager);
+  }
+}
+
+#endif
+
 static void
 bare_dns__on_init(void) {
   ares_library_init(ARES_LIB_INIT_ALL);
+
+#if defined(__ANDROID__)
+  bare_dns__init_android();
+#endif
 }
 
 static js_value_t *
