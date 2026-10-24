@@ -1106,11 +1106,27 @@ bare_dns_addr_to_ptr(js_env_t *env, js_callback_info_t *info) {
 
   assert(argc == 1);
 
-  char address[INET6_ADDRSTRLEN];
-  err = js_get_value_string_utf8(env, argv[0], (utf8_t *) address, sizeof(address), NULL);
+  size_t len;
+  err = js_get_value_string_utf8(env, argv[0], NULL, 0, &len);
   assert(err == 0);
 
+  char address[INET6_ADDRSTRLEN];
+
+  if (len < sizeof(address)) {
+    err = js_get_value_string_utf8(env, argv[0], (utf8_t *) address, sizeof(address), NULL);
+    assert(err == 0);
+  }
+
   struct ares_addr addr;
+
+  // A string that is too long or holds a NUL would be cut short. The rest may
+  // still parse as a different address.
+  if (len >= sizeof(address) || strlen(address) != len) {
+    err = js_throw_error(env, "EBADFAMILY", "Invalid IP address");
+    assert(err == 0);
+
+    return NULL;
+  }
 
   if (ares_inet_pton(AF_INET, address, &addr.addr.addr4) == 1) {
     addr.family = AF_INET;

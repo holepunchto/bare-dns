@@ -11,6 +11,7 @@ declare class DNSError extends Error {
   static RESOLVER_DESTROYED(msg?: string): DNSError
   static UNKNOWN_RECORD_TYPE(msg?: string): DNSError
   static INVALID_IP_ADDRESS(msg?: string): DNSError
+  static INVALID_HOSTNAME(msg?: string): DNSError
 
   static query(status: number, syscall: string, hostname?: string | null): DNSError
 }
