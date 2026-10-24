@@ -145,6 +145,10 @@ test('lookup all', async (t) => {
   )
 })
 
+test('lookup, name with a NUL', async (t) => {
+  await t.exception(() => dns.promises.lookup('localhost\0.example.test'), /INVALID_HOSTNAME/)
+})
+
 test('resolve4', async (t) => {
   const { server, resolver } = await open(t)
 
@@ -391,10 +395,34 @@ test('reverse, invalid ip', async (t) => {
   await t.exception(() => resolver.reverse('not an ip'), /INVALID_IP_ADDRESS/)
 })
 
+test('reverse, ip with a NUL', async (t) => {
+  const { server, resolver } = await open(t)
+
+  await t.exception(() => resolver.reverse('192.0.2.1\0junk'), /INVALID_IP_ADDRESS/)
+  t.alike(server.queries, [], 'nothing was queried')
+})
+
+test('reverse, ip that only parses once cut off', async (t) => {
+  const { server, resolver } = await open(t)
+
+  await t.exception(
+    () => resolver.reverse('0000:0000:0000:0000:0000:ffff:192.168.100.2001'),
+    /INVALID_IP_ADDRESS/
+  )
+  t.alike(server.queries, [], 'nothing was queried')
+})
+
 test('reverse, address the reverse zone has no name for', async (t) => {
   const { resolver } = await open(t)
 
   await failure(t, () => resolver.reverse('192.0.2.9'), 'ENOTFOUND', 'getHostByAddr', '192.0.2.9')
+})
+
+test('name with a NUL', async (t) => {
+  const { server, resolver } = await open(t)
+
+  await t.exception(() => resolver.resolve4('example.test\0.other.test'), /INVALID_HOSTNAME/)
+  t.alike(server.queries, [], 'nothing was queried')
 })
 
 test('unknown name', async (t) => {

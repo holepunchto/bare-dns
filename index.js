@@ -29,6 +29,9 @@ exports.lookup = function lookup(hostname, opts = {}, cb) {
     opts = {}
   }
 
+  // The name is passed on as a C string, so a NUL would cut it short.
+  if (hostname.includes('\0')) throw errors.INVALID_HOSTNAME(`Invalid hostname '${hostname}'`)
+
   let { family = 0, all = false } = opts
 
   if (typeof family === 'string') {
