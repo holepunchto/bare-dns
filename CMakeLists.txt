@@ -18,7 +18,11 @@ if(APPLE)
   set(HAVE_PIPE2 OFF CACHE BOOL "Enable pipe2() support in c-ares" FORCE)
 endif()
 
-fetch_package("github:c-ares/c-ares@1.34.9")
+fetch_package(
+  "github:c-ares/c-ares@1.34.9"
+  PATCHES
+    patches/001-prefix-apple-check-variables.patch
+)
 fetch_package("github:holepunchto/libintrusive#3903632")
 
 add_bare_module(bare_dns)

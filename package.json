@@ -27,6 +27,7 @@
     "binding.c",
     "binding.js",
     "CMakeLists.txt",
+    "patches",
     "lib",
     "prebuilds"
   ],
