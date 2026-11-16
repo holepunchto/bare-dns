@@ -23,7 +23,7 @@ fetch_package(
   PATCHES
     patches/001-prefix-apple-check-variables.patch
 )
-fetch_package("github:holepunchto/libintrusive#3903632")
+fetch_package("github:holepunchto/libintrusive#9f003c7")
 
 add_bare_module(bare_dns)
 
