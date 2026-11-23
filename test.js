@@ -481,6 +481,30 @@ test('setServers, with a port', (t) => {
   resolver.destroy()
 })
 
+test('setServers, server with a comma or a NUL', (t) => {
+  const resolver = new dns.Resolver()
+  t.teardown(() => resolver.destroy())
+
+  resolver.setServers(['1.1.1.1'])
+
+  t.exception(() => resolver.setServers(['8.8.8.8,192.0.2.1']), /INVALID_IP_ADDRESS/)
+  t.exception(() => resolver.setServers(['8.8.8.8\0', '192.0.2.1']), /INVALID_IP_ADDRESS/)
+  t.alike(resolver.getServers(), ['1.1.1.1:53'], 'the servers are unchanged')
+})
+
+test('setLocalAddress, invalid address', (t) => {
+  const resolver = new dns.Resolver()
+  t.teardown(() => resolver.destroy())
+
+  for (const ipv4 of ['127.0.0.1\0junk', '1'.repeat(64)]) {
+    t.exception(() => resolver.setLocalAddress(ipv4, null), /Invalid IPv4 address/)
+  }
+
+  for (const ipv6 of ['::1\0junk', '0000:0000:0000:0000:0000:ffff:192.168.100.2001']) {
+    t.exception(() => resolver.setLocalAddress(null, ipv6), /Invalid IPv6 address/)
+  }
+})
+
 test('setServers redirects queries', async (t) => {
   const { resolver } = await open(t, {
     records: [{ name: 'example.test', type: 'A', data: '192.0.2.1' }]

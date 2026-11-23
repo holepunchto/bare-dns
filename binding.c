@@ -226,6 +226,15 @@ bare_dns_lookup(js_env_t *env, js_callback_info_t *info) {
   err = js_get_value_string_utf8(env, argv[0], hostname, len, NULL);
   assert(err == 0);
 
+  if (strlen((char *) hostname) != len - 1 /* NULL */) {
+    free(hostname);
+
+    err = js_throw_error(env, "INVALID_HOSTNAME", "Invalid hostname");
+    assert(err == 0);
+
+    return NULL;
+  }
+
   uint32_t family;
   err = js_get_value_uint32(env, argv[1], &family);
   assert(err == 0);
@@ -925,6 +934,15 @@ bare_dns_query(js_env_t *env, js_callback_info_t *info) {
   err = js_get_value_string_utf8(env, argv[1], name, len, NULL);
   assert(err == 0);
 
+  if (strlen((char *) name) != len - 1 /* NULL */) {
+    free(name);
+
+    err = js_throw_error(env, "INVALID_HOSTNAME", "Invalid hostname");
+    assert(err == 0);
+
+    return NULL;
+  }
+
   uint32_t type;
   err = js_get_value_uint32(env, argv[2], &type);
   assert(err == 0);
@@ -1027,7 +1045,9 @@ bare_dns_set_servers(js_env_t *env, js_callback_info_t *info) {
   err = js_get_value_string_utf8(env, argv[1], servers, len, NULL);
   assert(err == 0);
 
-  int status = ares_set_servers_csv(resolver->channel, (char *) servers);
+  int status = strlen((char *) servers) == len - 1 /* NULL */
+                 ? ares_set_servers_csv(resolver->channel, (char *) servers)
+                 : ARES_EBADSTR;
 
   free(servers);
 
@@ -1062,14 +1082,23 @@ bare_dns_set_local_address(js_env_t *env, js_callback_info_t *info) {
 
     if (!is_string) continue;
 
-    char address[INET6_ADDRSTRLEN];
-    err = js_get_value_string_utf8(env, argv[i], (utf8_t *) address, sizeof(address), NULL);
+    size_t len;
+    err = js_get_value_string_utf8(env, argv[i], NULL, 0, &len);
     assert(err == 0);
+
+    char address[INET6_ADDRSTRLEN];
+
+    if (len < sizeof(address)) {
+      err = js_get_value_string_utf8(env, argv[i], (utf8_t *) address, sizeof(address), NULL);
+      assert(err == 0);
+    }
+
+    bool valid = len < sizeof(address) && strlen(address) == len;
 
     if (i == 1) {
       struct in_addr addr;
 
-      if (ares_inet_pton(AF_INET, address, &addr) != 1) {
+      if (!valid || ares_inet_pton(AF_INET, address, &addr) != 1) {
         err = js_throw_error(env, "EBADFAMILY", "Invalid IPv4 address");
         assert(err == 0);
 
@@ -1080,7 +1109,7 @@ bare_dns_set_local_address(js_env_t *env, js_callback_info_t *info) {
     } else {
       struct ares_in6_addr addr;
 
-      if (ares_inet_pton(AF_INET6, address, &addr) != 1) {
+      if (!valid || ares_inet_pton(AF_INET6, address, &addr) != 1) {
         err = js_throw_error(env, "EBADFAMILY", "Invalid IPv6 address");
         assert(err == 0);
 
